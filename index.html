@@ -30,6 +30,10 @@ import {
   onAuthStateChanged, createUserWithEmailAndPassword, updateProfile,
   signInAnonymously
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import {
+  getStorage, ref as storageRef, uploadString, uploadBytes,
+  getDownloadURL, deleteObject
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 
 const FIREBASE_CONFIG = {
   apiKey:            "AIzaSyArck5z76FtNzR7BoAgdq-yWLjU9YUcBvY",
@@ -43,14 +47,16 @@ const FIREBASE_CONFIG = {
 const app  = initializeApp(FIREBASE_CONFIG);
 const db   = getFirestore(app);
 const auth = getAuth(app);
+const storage = getStorage(app);
 
 window._FB = {
-  db, auth, isReady: true,
+  db, auth, storage, isReady: true,
   collection, doc, getDoc, getDocs,
   setDoc, addDoc, updateDoc, deleteDoc,
   query, where, orderBy, limit, onSnapshot, serverTimestamp,
   signInWithEmailAndPassword, signOut, onAuthStateChanged,
   createUserWithEmailAndPassword, updateProfile, signInAnonymously,
+  storageRef, uploadString, uploadBytes, getDownloadURL, deleteObject,
 };
 
 onAuthStateChanged(auth, user => {
@@ -162,6 +168,8 @@ code{font-family:var(--mono);}
 .tt-checkin{background:var(--teal-l);color:var(--teal);}
 .tt-conteo{background:var(--purple-l);color:var(--purple);}
 .tt-dirigido{background:var(--blue-l);color:var(--blue);}
+.tt-inbound{background:var(--orange-l);color:var(--orange-d);}
+.tt-putaway{background:var(--green-l);color:var(--green);}
 .tt-otro{background:var(--bg3);color:var(--txt2);border:1px solid var(--border);}
 
 .twrap{overflow-x:auto;border-radius:var(--r);border:1px solid var(--border);}
@@ -481,6 +489,14 @@ body.role-operador .adm{display:none!important;}
       </button>
       <button class="nav-item" data-page="checkin">
         <i class="ti ti-scan"></i><span class="nlbl">Check-In</span>
+      </button>
+      <button class="nav-item" data-page="inbound">
+        <i class="ti ti-package-import"></i><span class="nlbl">Inbound</span>
+        <span class="nbadge" id="badge-inbound" style="display:none;">0</span>
+      </button>
+      <button class="nav-item" data-page="putaway">
+        <i class="ti ti-forklift"></i><span class="nlbl">Putaway</span>
+        <span class="nbadge" id="badge-putaway" style="display:none;">0</span>
       </button>
       <button class="nav-item" data-page="qr">
         <i class="ti ti-qrcode"></i><span class="nlbl">Generador QR</span>
@@ -987,6 +1003,56 @@ body.role-operador .adm{display:none!important;}
         </div>
       </div>
 
+      <!-- ═══ INBOUND (recepción) ═══ -->
+      <div class="page" id="page-inbound">
+        <div id="inbound-tarea-info" style="display:none;" class="alert al-orange">
+          <i class="ti ti-package-import"></i><div id="inbound-tarea-txt"></div>
+        </div>
+        <div class="alert al-info">
+          <i class="ti ti-info-circle"></i>
+          <div>Captura física por LP (tarima): SKU/Ref interna, EAN, descripción, cantidad, color, medidas y tallas cuando aplique, más foto de evidencia. Al cerrar la tarima queda en <strong>Zona Validación</strong>, lista para Putaway.</div>
+        </div>
+        <div class="mgrid">
+          <div class="mcard"><div class="macc" style="background:var(--orange);"></div>
+            <div class="mlbl">En captura</div><div class="mval" id="inb-kpi-abierta">–</div><div class="msub">tarimas sin cerrar</div></div>
+          <div class="mcard"><div class="macc" style="background:var(--blue);"></div>
+            <div class="mlbl">En Zona Validación</div><div class="mval" id="inb-kpi-val">–</div><div class="msub">cerradas, esperando Putaway</div></div>
+          <div class="mcard"><div class="macc" style="background:var(--green);"></div>
+            <div class="mlbl">Ítems hoy</div><div class="mval" id="inb-kpi-items">–</div><div class="msub">capturados</div></div>
+        </div>
+        <div class="card">
+          <div class="chdr">
+            <div class="ctitle"><i class="ti ti-package-import"></i>Tarimas abiertas (captura sin cerrar)</div>
+            <button class="btn btn-p btn-sm" onclick="toast('El wizard de captura llega en la Parte 2','info')"><i class="ti ti-plus"></i>Iniciar Inbound</button>
+          </div>
+          <div id="inb-lista-abiertas"><div class="empty"><i class="ti ti-package"></i><p>Aún sin datos — esta vista se conecta en la Parte 2.</p></div></div>
+        </div>
+      </div>
+
+      <!-- ═══ PUTAWAY (almacenaje) ═══ -->
+      <div class="page" id="page-putaway">
+        <div id="putaway-tarea-info" style="display:none;" class="alert al-orange">
+          <i class="ti ti-forklift"></i><div id="putaway-tarea-txt"></div>
+        </div>
+        <div class="alert al-info">
+          <i class="ti ti-info-circle"></i>
+          <div>Toma una tarima desde <strong>Zona Validación</strong> y asígnale una ubicación real del CEDIS (rack/posición/nivel o zona especial). La ubicación se valida contra el mismo layout del módulo <strong>Layout Racks</strong>.</div>
+        </div>
+        <div class="mgrid">
+          <div class="mcard"><div class="macc" style="background:var(--blue);"></div>
+            <div class="mlbl">Esperando Putaway</div><div class="mval" id="put-kpi-zona">–</div><div class="msub">en Zona Validación</div></div>
+          <div class="mcard"><div class="macc" style="background:var(--green);"></div>
+            <div class="mlbl">Almacenadas hoy</div><div class="mval" id="put-kpi-hoy">–</div><div class="msub">con ubicación asignada</div></div>
+        </div>
+        <div class="card">
+          <div class="chdr">
+            <div class="ctitle"><i class="ti ti-forklift"></i>Tarimas listas para almacenar</div>
+            <button class="btn btn-p btn-sm" onclick="toast('El flujo de putaway llega en la Parte 3','info')"><i class="ti ti-scan"></i>Iniciar Putaway</button>
+          </div>
+          <div id="put-lista-zona"><div class="empty"><i class="ti ti-package"></i><p>Aún sin datos — esta vista se conecta en la Parte 3.</p></div></div>
+        </div>
+      </div>
+
       <!-- ═══ QR ═══ -->
       <div class="page" id="page-qr">
         <div class="twocol">
@@ -1149,6 +1215,8 @@ body.role-operador .adm{display:none!important;}
           <option value="checkin">Check-In</option>
           <option value="conteo">Conteo Cruzado</option>
           <option value="dirigido">Conteo Dirigido</option>
+          <option value="inbound">Inbound (Recepción)</option>
+          <option value="putaway">Putaway (Almacenaje)</option>
           <option value="otro">Otro</option>
         </select></div>
       <div class="fg"><label class="fl">Urgencia</label>
@@ -1293,6 +1361,7 @@ const S = {
 
   /* Datos en vivo (alimentados por listeners de Firestore) */
   clientes:[], skus:[], ubicaciones:[], operadores:[], tareas:[], conteos:[], checkins:[], sesiones:[],
+  tarimas:[], itemsTarima:[],
 
   /* Conteo */
   sesionActiva:null, modoConteo:'cruzado', equipo:'1', cItems:[],
@@ -1525,6 +1594,7 @@ const PAGE_NAMES={
   clientes:'Clientes / SKU', ubicaciones:'Ubicaciones',
   layout:'Layout de Racks', conteo:'Conteos',
   checkin:'Check-In / Recepción', qr:'Generador de QR',
+  inbound:'Inbound — Recepción y validación', putaway:'Putaway — Almacenaje',
   monitor:'Monitor en Tiempo Real', config:'Configuración',
 };
 
@@ -1549,6 +1619,8 @@ function navTo(pageId){
   if (pageId==='layout')       { poblarLayCli(); renderCedis(); }
   if (pageId==='conteo')       { renderConteoList(); poblarSels(); }
   if (pageId==='qr')           { poblarQRSels(); renderQR(); }
+  if (pageId==='inbound')      renderInboundHome();
+  if (pageId==='putaway')      renderPutawayHome();
   if (pageId==='operadores')   renderOperadores();
   if (pageId==='tareas-admin') renderTareasAdmin();
   if (pageId==='mis-tareas')   renderMisTareas();
@@ -1601,6 +1673,86 @@ async function fsDel(path){
   await _FB.deleteDoc(_FB.doc(_FB.db,path));
 }
 
+/* ══════════ HELPERS — IDs, LP y FOTOS (Storage) ══════════
+   Mismo patrón que ya usa guardarSKU(): IDs de documento legibles
+   y deterministas en vez de IDs random, para poder hacer fsSet()
+   directo por LP sin tener que consultar primero. */
+function idSeguro(str){
+  return String(str||'').trim().replace(/[\/\\.#$\[\]\s]+/g,'_').toUpperCase();
+}
+
+function generarLP(prefijo='LP'){
+  const f=new Date();
+  const yyyy=f.getFullYear();
+  const rnd=Math.floor(Math.random()*900+100);
+  return `${prefijo}-${yyyy}-${String(Date.now()).slice(-6)}${rnd}`;
+}
+
+/* Sube una foto de evidencia a Firebase Storage y regresa {url,path}.
+   Comprime a JPEG ≤1280px antes de subir para no saturar el plan gratuito. */
+async function subirFotoStorage(file, carpeta){
+  if (!window._FB?.storage) throw new Error('Storage no disponible');
+  const dataUrl = await comprimirImagen(file, 1280, 0.72);
+  const path = `${carpeta}/${Date.now()}_${Math.floor(Math.random()*1e4)}.jpg`;
+  const ref  = _FB.storageRef(_FB.storage, path);
+  await _FB.uploadString(ref, dataUrl, 'data_url');
+  const url  = await _FB.getDownloadURL(ref);
+  return { url, path };
+}
+
+async function borrarFotoStorage(path){
+  if (!path || !window._FB?.storage) return;
+  try { await _FB.deleteObject(_FB.storageRef(_FB.storage, path)); }
+  catch(e){ console.warn('No se pudo borrar foto', path, e.message); }
+}
+
+function comprimirImagen(file, maxLado=1280, calidad=0.72){
+  return new Promise((res,rej)=>{
+    const img=new Image();
+    const fr=new FileReader();
+    fr.onload=()=>{ img.src=fr.result; };
+    fr.onerror=rej;
+    img.onload=()=>{
+      let {width:w,height:h}=img;
+      if (w>maxLado||h>maxLado){
+        const esc=maxLado/Math.max(w,h);
+        w=Math.round(w*esc); h=Math.round(h*esc);
+      }
+      const cv=document.createElement('canvas');
+      cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h);
+      res(cv.toDataURL('image/jpeg',calidad));
+    };
+    img.onerror=rej;
+    fr.readAsDataURL(file);
+  });
+}
+
+/* ══════════ HELPER — VALIDAR UBICACIÓN CONTRA EL LAYOUT REAL ══════════
+   Usado por Putaway: una ubicación destino sólo es válida si coincide
+   con la misma estructura física que ya usa el módulo Layout Racks
+   (rack A–U / posición 1–75 / nivel N1–N6, bloques PTO I–VI, o una
+   de las zonas operativas). Así evitamos que alguien teclee cualquier
+   texto como destino final de una tarima. */
+function parsearUbicacion(codigo){
+  const c=String(codigo||'').trim().toUpperCase();
+  const mRack=c.match(/^([A-U])\/(\d{1,2})\/N?(\d)$/);
+  if (mRack){
+    const [,rack,pos,niv]=mRack;
+    const posN=Number(pos), nivN=Number(niv);
+    if (posN>=1 && posN<=RACK_POSICIONES && nivN>=1 && nivN<=RACK_NIVELES){
+      return { tipo:'rack', codigo:`${rack}/${posN}/N${nivN}`, rack, pos:posN, nivel:nivN };
+    }
+    return null;
+  }
+  const mBloque=c.match(/^(I|II|III|IV|V|VI)-([1-4])$/);
+  if (mBloque) return { tipo:'bloque', codigo:`${mBloque[1]}-${mBloque[2]}` };
+  const esp=CEDIS_LAYOUT.especiales.find(z=>z.toUpperCase()===c);
+  if (esp) return { tipo:'zona', codigo:esp };
+  return null;
+}
+function esUbicacionValida(codigo){ return !!parsearUbicacion(codigo); }
+
 /* ══════════ LISTENERS EN TIEMPO REAL ══════════
    Una sola fuente de verdad: Firestore empuja los cambios
    y la UI se refresca sola — admin y operadores siempre en sync. */
@@ -1620,6 +1772,8 @@ function iniciarListeners(){
   listen('conteos',    docs=>{ S.conteos=docs;    refreshUI('conteos'); });
   listen('checkins',   docs=>{ S.checkins=docs;   refreshUI('checkins');});
   listen('sesiones',   docs=>{ S.sesiones=docs;   refreshUI('sesiones');});
+  listen('tarimas',     docs=>{ S.tarimas=docs;     refreshUI('tarimas');});
+  listen('items_tarima',docs=>{ S.itemsTarima=docs; refreshUI('items_tarima');});
 }
 function detenerListeners(){ S.listeners.forEach(u=>{try{u()}catch(e){}}); S.listeners=[]; }
 
@@ -1633,6 +1787,8 @@ function refreshUI(origen){
   if (act==='page-operadores'  && origen==='ops')      renderOperadores();
   if (act==='page-monitor')                            renderMonitor();
   if (act==='page-conteo'      && origen==='conteos')  { renderConteoList(); renderValidacionLive(); renderUbicsRegistradas(); }
+  if (act==='page-inbound'     && (origen==='tarimas'||origen==='items_tarima')) renderInboundHome();
+  if (act==='page-putaway'     && (origen==='tarimas'||origen==='items_tarima')) renderPutawayHome();
   if (origen==='ops') poblarSels();
 }
 
@@ -1672,6 +1828,16 @@ function actualizarBadges(){
     const tot=dirPend+ciPend;
     bmon.style.display=tot>0?'inline':'none'; bmon.textContent=tot;
   }
+
+  /* Inbound: tarimas abiertas (aún no cerradas a Zona Validación) */
+  const inbAbiertas=S.tarimas.filter(t=>t.estatus==='abierta').length;
+  const binb=document.getElementById('badge-inbound');
+  if (binb){ binb.style.display=inbAbiertas>0?'inline':'none'; binb.textContent=inbAbiertas; }
+
+  /* Putaway: tarimas cerradas esperando ubicación */
+  const putPend=S.tarimas.filter(t=>t.estatus==='validacion').length;
+  const bput=document.getElementById('badge-putaway');
+  if (bput){ bput.style.display=putPend>0?'inline':'none'; bput.textContent=putPend; }
 }
 
 /* ══════════ HELPERS DE FECHA ══════════ */
@@ -1826,9 +1992,14 @@ function urgBadge(u){
   return `<span class="urg ${m[u]||'urg-baja'}">${l[u]||u||'—'}</span>`;
 }
 function tipoBadge(t){
-  const m={checkin:'tt-checkin',conteo:'tt-conteo',dirigido:'tt-dirigido',otro:'tt-otro'};
-  const l={checkin:'Check-In',conteo:'C. Cruzado',dirigido:'C. Dirigido',otro:'Otro'};
+  const m={checkin:'tt-checkin',conteo:'tt-conteo',dirigido:'tt-dirigido',inbound:'tt-inbound',putaway:'tt-putaway',otro:'tt-otro'};
+  const l={checkin:'Check-In',conteo:'C. Cruzado',dirigido:'C. Dirigido',inbound:'Inbound',putaway:'Putaway',otro:'Otro'};
   return `<span class="ttype ${m[t]||'tt-otro'}">${l[t]||t||'—'}</span>`;
+}
+const ESTATUS_TARIMA={abierta:'En captura',validacion:'En validación',disponible:'Disponible',pick:'En pick',consumido:'Consumido'};
+function estTarimaBadge(e){
+  const m={abierta:'est-proceso',validacion:'est-pausa',disponible:'est-completada',pick:'est-proceso',consumido:'est-pendiente'};
+  return `<span class="est ${m[e]||'est-pendiente'}">${ESTATUS_TARIMA[e]||e||'—'}</span>`;
 }
 function estBadge(e){
   const m={pendiente:'est-pendiente',proceso:'est-proceso',pausa:'est-pausa',completada:'est-completada'};
@@ -2172,6 +2343,8 @@ function botonAccionTarea(t){
     checkin:  ['ti-scan','Abrir Check-In'],
     conteo:   ['ti-arrows-cross','Abrir Conteo Cruzado'],
     dirigido: ['ti-route','Abrir Conteo Dirigido'],
+    inbound:  ['ti-package-import','Abrir Inbound'],
+    putaway:  ['ti-forklift','Abrir Putaway'],
   }[t.tipo];
   if (!cfg) return '';
   return `<button class="btn btn-p btn-sm"
@@ -2209,6 +2382,21 @@ function abrirTareaDesdeOp(id){
       if (t.clienteId){ const sel=document.getElementById('cnt-cli'); if(sel) sel.value=t.clienteId; }
       if (t.ubicacion){ const el=document.getElementById('cnt-ubic'); if(el) el.value=t.ubicacion; }
     },250);
+
+  } else if (t.tipo==='inbound'){
+    const info=document.getElementById('inbound-tarea-info');
+    const txt =document.getElementById('inbound-tarea-txt');
+    if (info) info.style.display='flex';
+    if (txt)  txt.textContent=`Tarea asignada: "${t.titulo}" — al cerrar la tarima en Zona Validación se marcará completada automáticamente.`;
+    navTo('inbound');
+    /* El wizard de captura (Parte 2) leerá t.clienteId / t.ubicacion al precargar */
+
+  } else if (t.tipo==='putaway'){
+    const info=document.getElementById('putaway-tarea-info');
+    const txt =document.getElementById('putaway-tarea-txt');
+    if (info) info.style.display='flex';
+    if (txt)  txt.textContent=`Tarea asignada: "${t.titulo}" — al confirmar el almacenaje se marcará completada automáticamente.`;
+    navTo('putaway');
   }
 }
 
@@ -2226,8 +2414,12 @@ async function completarTareaActiva(tipos){
   S.tareaActivaId=null;
   const info1=document.getElementById('conteo-tarea-info');
   const info2=document.getElementById('checkin-tarea-info');
+  const info3=document.getElementById('inbound-tarea-info');
+  const info4=document.getElementById('putaway-tarea-info');
   if (info1) info1.style.display='none';
   if (info2) info2.style.display='none';
+  if (info3) info3.style.display='none';
+  if (info4) info4.style.display='none';
   toast(`✅ Tarea "${t.titulo}" completada`,'success');
   return true;
 }
@@ -2377,6 +2569,80 @@ function renderUbicaciones(){
     </div>`;
 }
 
+/* ══════════ INBOUND — vista inicial (Parte 1: solo lectura/KPIs,
+   el wizard de captura completo llega en la Parte 2) ══════════ */
+function renderInboundHome(){
+  const tarimas=S.tarimas.filter(enAlmacen);
+  const abiertas=tarimas.filter(t=>t.estatus==='abierta');
+  const enValidacion=tarimas.filter(t=>t.estatus==='validacion');
+  const itemsHoy=S.itemsTarima.filter(i=>{ const f=tsToFecha(i); return f && f.toDateString()===new Date().toDateString(); }).length;
+
+  setTxt('inb-kpi-abierta', abiertas.length);
+  setTxt('inb-kpi-val', enValidacion.length);
+  setTxt('inb-kpi-items', itemsHoy);
+
+  const cont=document.getElementById('inb-lista-abiertas'); if(!cont) return;
+  if (!abiertas.length){
+    cont.innerHTML=`<div class="empty"><i class="ti ti-package"></i><p>No hay tarimas en captura por el momento.</p></div>`;
+    return;
+  }
+  cont.innerHTML=abiertas.map(t=>{
+    const items=S.itemsTarima.filter(i=>i.tarimaId===t.id || i.lp===t.lp);
+    return `
+    <div class="tcard">
+      <div class="tcard-hdr">
+        <div class="tcard-title"><code>${t.lp||t.id}</code></div>
+        ${estTarimaBadge(t.estatus)}
+      </div>
+      <div class="tcard-meta">
+        ${t.cliente?`<span style="font-size:10px;color:var(--txt2);">Cliente: ${t.cliente}</span>`:''}
+        <span style="font-size:10px;color:var(--txt2);">${items.length} ítem(s) capturado(s)</span>
+        ${t.creadoPor?`<span style="font-size:10px;color:var(--txt2);">Por: ${t.creadoPor}</span>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ══════════ PUTAWAY — vista inicial (Parte 1: solo lectura/KPIs,
+   el flujo de escaneo + asignación de ubicación llega en la Parte 3) ══════════ */
+function renderPutawayHome(){
+  const tarimas=S.tarimas.filter(enAlmacen);
+  const enZona=tarimas.filter(t=>t.estatus==='validacion');
+  const hoy=tarimas.filter(t=>{
+    if (t.estatus!=='disponible') return false;
+    const f=t.fechaPutaway?new Date(t.fechaPutaway):tsToFecha(t);
+    return f && f.toDateString()===new Date().toDateString();
+  }).length;
+
+  setTxt('put-kpi-zona', enZona.length);
+  setTxt('put-kpi-hoy', hoy);
+
+  const cont=document.getElementById('put-lista-zona'); if(!cont) return;
+  if (!enZona.length){
+    cont.innerHTML=`<div class="empty"><i class="ti ti-package"></i><p>No hay tarimas esperando Putaway.</p></div>`;
+    return;
+  }
+  cont.innerHTML=enZona.map(t=>{
+    const items=S.itemsTarima.filter(i=>i.tarimaId===t.id || i.lp===t.lp);
+    const totalUnid=items.reduce((s,i)=>s+Number(i.cantidad||0),0);
+    return `
+    <div class="tcard">
+      <div class="tcard-hdr">
+        <div class="tcard-title"><code>${t.lp||t.id}</code></div>
+        ${estTarimaBadge(t.estatus)}
+      </div>
+      <div class="tcard-meta">
+        ${t.cliente?`<span style="font-size:10px;color:var(--txt2);">Cliente: ${t.cliente}</span>`:''}
+        <span style="font-size:10px;color:var(--txt2);">${items.length} SKU(s) · ${totalUnid.toLocaleString('es-MX')} unid.</span>
+        <span style="font-size:10px;color:var(--txt2);">📍 ${t.zonaActual||'Zona Validación'}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* Pequeño helper: set textContent solo si el elemento existe */
+function setTxt(id,val){ const el=document.getElementById(id); if (el) el.textContent=val; }
+
 /* ══════════ PLANO DEL CEDIS ══════════
    Estructura física fiel al plano del almacén iFull.
    Racks A–U disponibles para todos los clientes (75 posiciones × 6 niveles).
@@ -2400,7 +2666,7 @@ const CEDIS_LAYOUT = {
   ],
   rackU:    ['U'],
   bloques:  ['I','II','III','IV','V','VI'],  /* Bloques PTO 1-6 (piso) */
-  especiales:['DROP','Devoluciones','Calidad','Packing','Andén 1','Andén 2','Andén 3','Andén 4'],
+  especiales:['DROP','Devoluciones','Calidad','Packing','Zona Validación','Zona Pick','Andén 1','Andén 2','Andén 3','Andén 4'],
 };
 
 const RACK_POSICIONES = 75;   /* posiciones horizontales por rack */
@@ -3871,7 +4137,7 @@ function toast(msg,tipo='info'){
    Dashboard para presentar a dirección: KPIs, gráficos y ranking
    de puntos por operador (resultados × dificultad de tarea). */
 
-const PUNTOS_BASE = { checkin:10, dirigido:15, cruzado:20, tercero:25 };
+const PUNTOS_BASE = { checkin:10, dirigido:15, cruzado:20, tercero:25, inbound:12, putaway:10 };
 
 let _charts = {};
 function destruirChart(id){ if(_charts[id]){ try{_charts[id].destroy();}catch(e){} _charts[id]=null; } }
