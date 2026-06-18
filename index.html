@@ -1003,30 +1003,293 @@ body.role-operador .adm{display:none!important;}
         </div>
       </div>
 
-      <!-- ═══ INBOUND (recepción) ═══ -->
+      <!-- ═══ INBOUND (recepción) — Parte 2: wizard completo ═══ -->
       <div class="page" id="page-inbound">
         <div id="inbound-tarea-info" style="display:none;" class="alert al-orange">
           <i class="ti ti-package-import"></i><div id="inbound-tarea-txt"></div>
         </div>
-        <div class="alert al-info">
-          <i class="ti ti-info-circle"></i>
-          <div>Captura física por LP (tarima): SKU/Ref interna, EAN, descripción, cantidad, color, medidas y tallas cuando aplique, más foto de evidencia. Al cerrar la tarima queda en <strong>Zona Validación</strong>, lista para Putaway.</div>
-        </div>
-        <div class="mgrid">
-          <div class="mcard"><div class="macc" style="background:var(--orange);"></div>
-            <div class="mlbl">En captura</div><div class="mval" id="inb-kpi-abierta">–</div><div class="msub">tarimas sin cerrar</div></div>
-          <div class="mcard"><div class="macc" style="background:var(--blue);"></div>
-            <div class="mlbl">En Zona Validación</div><div class="mval" id="inb-kpi-val">–</div><div class="msub">cerradas, esperando Putaway</div></div>
-          <div class="mcard"><div class="macc" style="background:var(--green);"></div>
-            <div class="mlbl">Ítems hoy</div><div class="mval" id="inb-kpi-items">–</div><div class="msub">capturados</div></div>
-        </div>
-        <div class="card">
-          <div class="chdr">
-            <div class="ctitle"><i class="ti ti-package-import"></i>Tarimas abiertas (captura sin cerrar)</div>
-            <button class="btn btn-p btn-sm" onclick="toast('El wizard de captura llega en la Parte 2','info')"><i class="ti ti-plus"></i>Iniciar Inbound</button>
+
+        <!-- ── Vista HOME (KPIs + lista tarimas) ── -->
+        <div id="inb-home">
+          <div class="mgrid">
+            <div class="mcard"><div class="macc" style="background:var(--orange);"></div>
+              <div class="mlbl">En captura</div><div class="mval" id="inb-kpi-abierta">–</div><div class="msub">tarimas sin cerrar</div></div>
+            <div class="mcard"><div class="macc" style="background:var(--blue);"></div>
+              <div class="mlbl">En Zona Validación</div><div class="mval" id="inb-kpi-val">–</div><div class="msub">cerradas, esperando Putaway</div></div>
+            <div class="mcard"><div class="macc" style="background:var(--green);"></div>
+              <div class="mlbl">Ítems hoy</div><div class="mval" id="inb-kpi-items">–</div><div class="msub">capturados</div></div>
           </div>
-          <div id="inb-lista-abiertas"><div class="empty"><i class="ti ti-package"></i><p>Aún sin datos — esta vista se conecta en la Parte 2.</p></div></div>
+
+          <div class="card">
+            <div class="chdr">
+              <div class="ctitle"><i class="ti ti-package-import"></i>Tarimas en captura</div>
+              <button class="btn btn-p btn-sm" onclick="inbNuevaTarima()"><i class="ti ti-plus"></i>Nueva tarima</button>
+            </div>
+            <div id="inb-lista-abiertas"><div class="empty"><i class="ti ti-package"></i><p>No hay tarimas abiertas por el momento.</p></div></div>
+          </div>
+
+          <div class="card">
+            <div class="chdr">
+              <div class="ctitle"><i class="ti ti-circle-check" style="color:var(--blue);"></i>En Zona Validación</div>
+              <span style="font-size:10px;color:var(--txt2);">Esperando Putaway</span>
+            </div>
+            <div id="inb-lista-validacion"><div class="empty"><i class="ti ti-package"></i><p>Sin tarimas en Zona Validación.</p></div></div>
+          </div>
         </div>
+
+        <!-- ══════════ WIZARD DE INBOUND ══════════
+             Paso 0: datos LP (código + cliente + referencia PO)
+             Paso 1: captura de ítems (SKU/EAN, desc, qty, medidas, foto)
+             Paso 2: resumen + cierre a Zona Validación
+        ════════════════════════════════════════════ -->
+        <div id="inb-wizard" style="display:none;">
+
+          <!-- Steps -->
+          <div class="steps" id="inb-steps">
+            <div class="step active" data-istep="0"><div class="stepn">1</div><span>Datos LP</span></div>
+            <div class="step" data-istep="1"><div class="stepn">2</div><span>Captura ítems</span></div>
+            <div class="step" data-istep="2"><div class="stepn">3</div><span>Cierre</span></div>
+          </div>
+
+          <!-- ── Paso 0: Datos de la tarima ── -->
+          <div id="inb-s0">
+            <div class="card">
+              <div class="chdr">
+                <div class="ctitle"><i class="ti ti-barcode"></i>Identificación de tarima</div>
+                <button class="btn btn-sm" onclick="inbCancelarWizard()"><i class="ti ti-arrow-left"></i>Volver</button>
+              </div>
+              <div class="frow c2">
+                <div class="fg">
+                  <label class="fl">Código LP <span style="color:var(--red);">*</span></label>
+                  <div style="display:flex;gap:8px;">
+                    <input class="fc" id="inb-lp" placeholder="LP-2024-001234" style="flex:1;font-family:var(--mono);">
+                    <button class="btn btn-sm" onclick="abrirScanner('inb-lp')" title="Escanear LP"><i class="ti ti-scan"></i></button>
+                  </div>
+                  <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-xs" onclick="inbGenerarLP()"><i class="ti ti-sparkles"></i>Generar auto</button>
+                    <span style="font-size:10px;color:var(--txt3);">Formato: LP-YYYY-XXXXXX</span>
+                  </div>
+                </div>
+                <div class="fg">
+                  <label class="fl">Cliente <span style="color:var(--red);">*</span></label>
+                  <select class="fc" id="inb-cli"><option value="">— Selecciona cliente —</option></select>
+                </div>
+              </div>
+              <div class="frow c2">
+                <div class="fg">
+                  <label class="fl">Referencia PO / Embarque</label>
+                  <input class="fc" id="inb-po" placeholder="PO-2024-0088 (opcional)">
+                </div>
+                <div class="fg">
+                  <label class="fl">Proveedor</label>
+                  <input class="fc" id="inb-prov" placeholder="Nombre del proveedor (opcional)">
+                </div>
+              </div>
+              <div class="fg">
+                <label class="fl">Observaciones generales de la tarima</label>
+                <textarea class="fc" id="inb-obs-gen" placeholder="Ej: tarima con esquineros, precinto roto…" style="min-height:54px;"></textarea>
+              </div>
+              <div class="div"></div>
+              <div class="bgrp">
+                <button class="btn btn-p" onclick="inbIrPaso1()"><i class="ti ti-arrow-right"></i>Siguiente: Capturar ítems</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Paso 1: Captura de ítems ── -->
+          <div id="inb-s1" style="display:none;">
+            <div class="twocol" style="grid-template-columns:1.3fr 1fr;">
+              <!-- Columna izquierda: formulario ítem -->
+              <div>
+                <div class="card">
+                  <div class="chdr">
+                    <div class="ctitle">
+                      <i class="ti ti-package"></i>
+                      Tarima <code id="inb-lp-lbl" style="font-size:13px;"></code>
+                    </div>
+                    <div class="bgrp">
+                      <span class="est est-proceso" id="inb-items-badge">0 ítems</span>
+                      <button class="btn btn-sm" onclick="inbVolver0()"><i class="ti ti-arrow-left"></i>Paso 1</button>
+                    </div>
+                  </div>
+
+                  <div class="alert al-info" style="margin-bottom:14px;">
+                    <i class="ti ti-info-circle"></i>
+                    <div>Agrega cada referencia de la tarima. Campos con <strong>*</strong> son obligatorios. Foto de evidencia es recomendada. Al terminar pulsa <strong>Cerrar tarima</strong>.</div>
+                  </div>
+
+                  <!-- Escáner / búsqueda de SKU -->
+                  <div class="fg">
+                    <label class="fl">SKU / Ref. interna / EAN <span style="color:var(--red);">*</span></label>
+                    <div style="display:flex;gap:8px;">
+                      <div class="ac-wrap" style="flex:1;">
+                        <input class="fc" id="inb-sku" placeholder="Escanea o digita…" autocomplete="off"
+                               oninput="inbAcBuscar(this.value)"
+                               onkeydown="inbAcNav(event)"
+                               onfocus="inbAcBuscar(this.value)"
+                               onblur="setTimeout(()=>inbAcCerrar(),160)">
+                        <div class="ac-list" id="ac-inb-sku"></div>
+                      </div>
+                      <button class="btn btn-sm" onclick="abrirScanner('inb-sku')" title="Escanear código"><i class="ti ti-scan"></i></button>
+                    </div>
+                  </div>
+
+                  <div class="frow c2">
+                    <div class="fg">
+                      <label class="fl">EAN / Código de barras</label>
+                      <div style="display:flex;gap:8px;">
+                        <input class="fc" id="inb-ean" placeholder="EAN-13 / UPC" style="flex:1;font-family:var(--mono);">
+                        <button class="btn btn-sm" onclick="abrirScanner('inb-ean')" title="Escanear EAN"><i class="ti ti-scan"></i></button>
+                      </div>
+                    </div>
+                    <div class="fg">
+                      <label class="fl">Descripción</label>
+                      <input class="fc" id="inb-desc" placeholder="Descripción del producto">
+                    </div>
+                  </div>
+
+                  <div class="frow c3">
+                    <div class="fg">
+                      <label class="fl">Cantidad <span style="color:var(--red);">*</span></label>
+                      <input class="fc" type="number" id="inb-qty" min="0" placeholder="0"
+                             onkeydown="if(event.key==='Enter')inbAddItem()">
+                    </div>
+                    <div class="fg">
+                      <label class="fl">Unidad</label>
+                      <select class="fc" id="inb-unidad">
+                        <option value="PZA">PZA</option>
+                        <option value="CAJA">CAJA</option>
+                        <option value="PAR">PAR</option>
+                        <option value="KG">KG</option>
+                        <option value="MT">MT</option>
+                        <option value="JGO">JGO</option>
+                        <option value="OTRO">OTRO</option>
+                      </select>
+                    </div>
+                    <div class="fg">
+                      <label class="fl">Condición</label>
+                      <select class="fc" id="inb-cond">
+                        <option value="buena">Buena</option>
+                        <option value="danada">Dañada</option>
+                        <option value="abierta">Abierta</option>
+                        <option value="incompleta">Incompleta</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- Atributos variables (color, talla, medidas) -->
+                  <div id="inb-attrs-toggle" style="margin-bottom:12px;">
+                    <button class="btn btn-sm btn-xs" style="font-size:11px;" onclick="inbToggleAttrs()">
+                      <i class="ti ti-adjustments-horizontal"></i><span id="inb-attrs-lbl">+ Atributos (color, talla, medidas)</span>
+                    </button>
+                  </div>
+                  <div id="inb-attrs" style="display:none;">
+                    <div class="frow c3">
+                      <div class="fg"><label class="fl">Color</label><input class="fc" id="inb-color" placeholder="Rojo, Azul…"></div>
+                      <div class="fg"><label class="fl">Talla / Modelo</label><input class="fc" id="inb-talla" placeholder="XL, 42, M…"></div>
+                      <div class="fg"><label class="fl">Medidas (L×A×H)</label><input class="fc" id="inb-medidas" placeholder="120×80×60 cm"></div>
+                    </div>
+                    <div class="fg"><label class="fl">Peso (kg)</label><input class="fc" id="inb-peso" type="number" min="0" step="0.1" placeholder="0.00" style="max-width:140px;"></div>
+                  </div>
+
+                  <!-- Foto de evidencia -->
+                  <div class="fg">
+                    <label class="fl">Foto de evidencia</label>
+                    <div class="fotozone" id="inb-fotozone" onclick="document.getElementById('inb-file').click()">
+                      <img id="inb-fotoprev" class="fotoprev" style="display:none;max-height:120px;width:100%;object-fit:cover;border-radius:var(--r);">
+                      <div id="inb-fotoicn">
+                        <i class="ti ti-camera" style="font-size:26px;color:var(--txt2);"></i>
+                        <div style="font-size:11px;color:var(--txt2);margin-top:4px;">Toca para fotografiar el ítem</div>
+                      </div>
+                    </div>
+                    <input type="file" id="inb-file" accept="image/*" capture="environment" style="display:none;" onchange="inbProcFoto(this)">
+                    <div style="margin-top:4px;display:flex;gap:8px;" id="inb-foto-btns" style="display:none;">
+                      <button class="btn btn-xs" onclick="inbQuitarFoto()" id="btn-inb-quitar-foto" style="display:none;"><i class="ti ti-trash"></i>Quitar foto</button>
+                    </div>
+                  </div>
+
+                  <div class="fg">
+                    <label class="fl">Nota del ítem (opcional)</label>
+                    <input class="fc" id="inb-nota-item" placeholder="Ej: caja rota, etiqueta ilegible…">
+                  </div>
+
+                  <div class="div"></div>
+                  <div class="bgrp">
+                    <button class="btn btn-p" onclick="inbAddItem()"><i class="ti ti-plus"></i>Agregar ítem</button>
+                    <button class="btn btn-xs" onclick="inbLimpiarForm()"><i class="ti ti-refresh"></i>Limpiar</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Columna derecha: lista de ítems ya agregados -->
+              <div>
+                <div class="card" style="position:sticky;top:0;">
+                  <div class="chdr">
+                    <div class="ctitle"><i class="ti ti-list"></i>Ítems capturados</div>
+                    <span class="est est-proceso" id="inb-items-cnt">0</span>
+                  </div>
+                  <div id="inb-items-list" style="max-height:480px;overflow-y:auto;">
+                    <div class="empty" id="inb-items-empty">
+                      <i class="ti ti-package"></i>
+                      <p>Agrega ítems usando el formulario</p>
+                    </div>
+                  </div>
+                  <div class="div"></div>
+                  <button class="btn btn-ok" style="width:100%;justify-content:center;padding:11px;" onclick="inbIrPaso2()">
+                    <i class="ti ti-circle-check"></i>Cerrar tarima → Zona Validación
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Paso 2: Resumen y cierre ── -->
+          <div id="inb-s2" style="display:none;">
+            <div class="twocol">
+              <div class="card">
+                <div class="chdr">
+                  <div class="ctitle"><i class="ti ti-circle-check" style="color:var(--green);"></i>Resumen de tarima</div>
+                </div>
+                <div id="inb-resumen-txt" style="font-size:13px;color:var(--txt2);line-height:1.9;margin-bottom:14px;"></div>
+
+                <div class="fg">
+                  <label class="fl">Zona destino <span style="color:var(--red);">*</span></label>
+                  <select class="fc" id="inb-zona-destino">
+                    <option value="Zona Validación">Zona Validación (default)</option>
+                    <option value="Calidad">Calidad</option>
+                    <option value="DROP">DROP</option>
+                    <option value="Devoluciones">Devoluciones</option>
+                  </select>
+                </div>
+
+                <div class="fg">
+                  <label class="fl">Observaciones finales</label>
+                  <textarea class="fc" id="inb-obs-cierre" placeholder="Comentarios de cierre (opcional)…" style="min-height:60px;"></textarea>
+                </div>
+
+                <div class="div"></div>
+                <div class="bgrp">
+                  <button class="btn btn-sm" onclick="inbVolver1()"><i class="ti ti-arrow-left"></i>Volver a ítems</button>
+                  <button class="btn btn-ok" id="btn-inb-cerrar" onclick="inbCerrarTarima()" style="flex:1;justify-content:center;padding:10px 14px;">
+                    <i class="ti ti-forklift"></i>Confirmar y enviar a Zona Validación
+                  </button>
+                </div>
+              </div>
+
+              <!-- Tabla resumen de ítems -->
+              <div class="card">
+                <div class="chdr"><div class="ctitle"><i class="ti ti-table"></i>Ítems de esta tarima</div></div>
+                <div class="twrap">
+                  <table>
+                    <thead><tr><th>SKU</th><th>Desc.</th><th>Cant.</th><th>Cond.</th><th>📷</th></tr></thead>
+                    <tbody id="inb-resumen-tabla"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /inb-wizard -->
       </div>
 
       <!-- ═══ PUTAWAY (almacenaje) ═══ -->
@@ -1619,7 +1882,7 @@ function navTo(pageId){
   if (pageId==='layout')       { poblarLayCli(); renderCedis(); }
   if (pageId==='conteo')       { renderConteoList(); poblarSels(); }
   if (pageId==='qr')           { poblarQRSels(); renderQR(); }
-  if (pageId==='inbound')      renderInboundHome();
+  if (pageId==='inbound')      { inbMostrarHome(); renderInboundHome(); }
   if (pageId==='putaway')      renderPutawayHome();
   if (pageId==='operadores')   renderOperadores();
   if (pageId==='tareas-admin') renderTareasAdmin();
@@ -2389,7 +2652,8 @@ function abrirTareaDesdeOp(id){
     if (info) info.style.display='flex';
     if (txt)  txt.textContent=`Tarea asignada: "${t.titulo}" — al cerrar la tarima en Zona Validación se marcará completada automáticamente.`;
     navTo('inbound');
-    /* El wizard de captura (Parte 2) leerá t.clienteId / t.ubicacion al precargar */
+    /* Abrir wizard automáticamente con el cliente pre-cargado */
+    setTimeout(() => inbNuevaTarima(), 120);
 
   } else if (t.tipo==='putaway'){
     const info=document.getElementById('putaway-tarea-info');
@@ -4473,6 +4737,746 @@ function acCerrar(target){
   acState.idx=-1;
 }
 
+
+/* ═══════════════════════════════════════════════════════
+   PARTE 2 — WIZARD INBOUND
+   Flujo: Home → [LP + cliente + PO] → [ítems en bucle] → [cierre → Zona Validación]
+   Cada ítem queda en `items_tarima` (colección Firestore), la tarima
+   en `tarimas` (doc ID = LP sanitizado, igual patrón que `skus`).
+   ═══════════════════════════════════════════════════════ */
+
+/* Estado del wizard */
+const INB = {
+  lp: '',          /* LP activo */
+  tarimaId: '',    /* doc ID en Firestore (= idSeguro(LP)) */
+  clienteId: '',
+  cliente: '',
+  po: '',
+  prov: '',
+  obsGen: '',
+  items: [],       /* ítems agregados en memoria */
+  fotoDataUrl: null,  /* foto del ítem actual (base64, antes de comprimir y subir) */
+  attrsAbiertos: false,
+  editIdx: null,   /* si se está editando un ítem existente */
+};
+
+/* ── Navegar entre pasos del wizard ── */
+function inbGoto(paso) {
+  ['inb-s0','inb-s1','inb-s2'].forEach((id,i) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = (i === paso) ? 'block' : 'none';
+  });
+  document.querySelectorAll('[data-istep]').forEach(el => {
+    const n = Number(el.dataset.istep);
+    el.classList.toggle('active', n === paso);
+    el.classList.toggle('done', n < paso);
+  });
+}
+
+/* ── Abrir home / wizard ── */
+function inbMostrarHome(){ document.getElementById('inb-home').style.display='block'; document.getElementById('inb-wizard').style.display='none'; }
+function inbMostrarWizard(){ document.getElementById('inb-home').style.display='none'; document.getElementById('inb-wizard').style.display='block'; }
+
+/* ── Nueva tarima: limpiar estado y abrir paso 0 ── */
+function inbNuevaTarima(){
+  Object.assign(INB, { lp:'', tarimaId:'', clienteId:'', cliente:'', po:'', prov:'', obsGen:'', items:[], fotoDataUrl:null, attrsAbiertos:false, editIdx:null });
+  /* Poblar selector de clientes */
+  const sel = document.getElementById('inb-cli');
+  if (sel) {
+    sel.innerHTML = '<option value="">— Selecciona cliente —</option>' +
+      S.clientes.map(c => `<option value="${c.id||c.id_odoo}">${c.nombre}</option>`).join('');
+  }
+  /* Pre-fill cliente si venimos de una tarea */
+  const t = S.tareaActivaId ? S.tareas.find(x => x.id === S.tareaActivaId) : null;
+  if (t?.clienteId && sel) sel.value = t.clienteId;
+
+  /* Reset campos paso 0 */
+  ['inb-lp','inb-po','inb-prov','inb-obs-gen'].forEach(id => { const e = document.getElementById(id); if(e) e.value=''; });
+
+  inbMostrarWizard();
+  inbGoto(0);
+}
+
+/* ── Generar LP automático ── */
+function inbGenerarLP(){
+  const lp = generarLP('LP');
+  const el = document.getElementById('inb-lp');
+  if (el) { el.value = lp; el.focus(); }
+}
+
+/* ── Cancelar wizard y volver al home ── */
+function inbCancelarWizard(){
+  if (INB.items.length > 0){
+    if (!confirm(`La tarima "${INB.lp}" tiene ${INB.items.length} ítem(s) no guardados. ¿Cancelar y descartar?`)) return;
+  }
+  /* Si la tarima ya se guardó en Firestore como "abierta", la dejamos ahí */
+  Object.assign(INB, { lp:'', tarimaId:'', clienteId:'', cliente:'', po:'', prov:'', obsGen:'', items:[], fotoDataUrl:null, editIdx:null });
+  inbMostrarHome();
+}
+
+/* ── Paso 0 → Paso 1 ── */
+async function inbIrPaso1(){
+  const lp = (document.getElementById('inb-lp')?.value || '').trim().toUpperCase();
+  const cliSel = document.getElementById('inb-cli');
+  const cliId = cliSel?.value || '';
+  if (!lp){ toast('Ingresa o genera el código LP','warn'); return; }
+  if (!cliId){ toast('Selecciona un cliente','warn'); return; }
+
+  INB.lp = lp;
+  INB.tarimaId = idSeguro(lp);
+  INB.clienteId = cliId;
+  INB.cliente = cliSel?.options[cliSel.selectedIndex]?.text || '';
+  INB.po = document.getElementById('inb-po')?.value?.trim() || '';
+  INB.prov = document.getElementById('inb-prov')?.value?.trim() || '';
+  INB.obsGen = document.getElementById('inb-obs-gen')?.value?.trim() || '';
+
+  /* Verificar duplicado de LP */
+  const existente = S.tarimas.find(t => t.lp === lp || t.id === INB.tarimaId);
+  if (existente){
+    if (existente.estatus === 'abierta'){
+      if (!confirm(`Ya existe la tarima "${lp}" en estado "En captura". ¿Quieres continuar editándola?`)) return;
+      /* Cargar ítems previos de Firestore */
+      const itemsFS = S.itemsTarima.filter(i => i.tarimaId === INB.tarimaId || i.lp === lp);
+      INB.items = itemsFS.map(i => ({ ...i, _guardado: true }));
+    } else {
+      toast(`El LP "${lp}" ya existe con estatus "${existente.estatus}". Usa un código diferente.`,'error');
+      return;
+    }
+  } else {
+    INB.items = [];
+    /* Crear doc de tarima en Firestore como "abierta" */
+    try {
+      await fsSet(`tarimas/${INB.tarimaId}`, {
+        lp, clienteId: INB.clienteId, cliente: INB.cliente,
+        po: INB.po, proveedor: INB.prov, obsGeneral: INB.obsGen,
+        estatus: 'abierta', creadoPor: S.nombre,
+        almacen: S.almacen || '', tareaId: S.tareaActivaId || '',
+        fechaApertura: new Date().toISOString(),
+      });
+    } catch(e){ toast('Error creando tarima: '+e.message,'error'); return; }
+  }
+
+  /* Actualizar label del paso 1 */
+  const lbl = document.getElementById('inb-lp-lbl');
+  if (lbl) lbl.textContent = lp;
+
+  inbLimpiarForm();
+  inbRenderItems();
+  inbGoto(1);
+}
+
+function inbVolver0(){ inbGoto(0); }
+function inbVolver1(){ inbGoto(1); }
+
+/* ── Foto del ítem ── */
+function inbProcFoto(inp){
+  const f = inp.files?.[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = e => {
+    INB.fotoDataUrl = e.target.result;
+    const prev = document.getElementById('inb-fotoprev');
+    const icn  = document.getElementById('inb-fotoicn');
+    const qbtn = document.getElementById('btn-inb-quitar-foto');
+    if (prev){ prev.src = INB.fotoDataUrl; prev.style.display='block'; }
+    if (icn)  icn.style.display = 'none';
+    if (qbtn) qbtn.style.display = 'inline-flex';
+    toast('Foto lista','success');
+  };
+  r.readAsDataURL(f);
+}
+
+function inbQuitarFoto(){
+  INB.fotoDataUrl = null;
+  const prev = document.getElementById('inb-fotoprev');
+  const icn  = document.getElementById('inb-fotoicn');
+  const qbtn = document.getElementById('btn-inb-quitar-foto');
+  const finp = document.getElementById('inb-file');
+  if (prev){ prev.src=''; prev.style.display='none'; }
+  if (icn)  icn.style.display = 'block';
+  if (qbtn) qbtn.style.display = 'none';
+  if (finp) finp.value = '';
+}
+
+/* ── Toggle atributos ── */
+function inbToggleAttrs(){
+  INB.attrsAbiertos = !INB.attrsAbiertos;
+  const el = document.getElementById('inb-attrs');
+  const lbl = document.getElementById('inb-attrs-lbl');
+  if (el) el.style.display = INB.attrsAbiertos ? 'block' : 'none';
+  if (lbl) lbl.textContent = INB.attrsAbiertos ? '− Ocultar atributos' : '+ Atributos (color, talla, medidas)';
+}
+
+/* ── Limpiar formulario de ítem (sin limpiar la lista) ── */
+function inbLimpiarForm(){
+  ['inb-sku','inb-ean','inb-desc','inb-color','inb-talla','inb-medidas','inb-nota-item'].forEach(id => {
+    const e = document.getElementById(id); if(e) e.value = '';
+  });
+  const qty = document.getElementById('inb-qty'); if(qty) qty.value = '';
+  const peso = document.getElementById('inb-peso'); if(peso) peso.value = '';
+  const cond = document.getElementById('inb-cond'); if(cond) cond.value = 'buena';
+  const unid = document.getElementById('inb-unidad'); if(unid) unid.value = 'PZA';
+  INB.fotoDataUrl = null;
+  INB.editIdx = null;
+  inbQuitarFoto();
+  inbAcCerrar();
+  document.getElementById('inb-sku')?.focus();
+}
+
+/* ── Agregar o actualizar ítem en memoria ── */
+async function inbAddItem(){
+  const sku  = (document.getElementById('inb-sku')?.value||'').trim();
+  const qty  = Number(document.getElementById('inb-qty')?.value||0);
+  if (!sku){ toast('Ingresa el SKU o EAN','warn'); document.getElementById('inb-sku')?.focus(); return; }
+  if (!qty || qty <= 0){ toast('Cantidad inválida','warn'); document.getElementById('inb-qty')?.focus(); return; }
+
+  const item = {
+    id: `${INB.tarimaId}_${Date.now()}`,
+    tarimaId: INB.tarimaId,
+    lp: INB.lp,
+    clienteId: INB.clienteId,
+    cliente: INB.cliente,
+    sku,
+    ean:     (document.getElementById('inb-ean')?.value||'').trim(),
+    desc:    (document.getElementById('inb-desc')?.value||'').trim(),
+    cantidad: qty,
+    unidad:  document.getElementById('inb-unidad')?.value||'PZA',
+    condicion: document.getElementById('inb-cond')?.value||'buena',
+    color:   (document.getElementById('inb-color')?.value||'').trim(),
+    talla:   (document.getElementById('inb-talla')?.value||'').trim(),
+    medidas: (document.getElementById('inb-medidas')?.value||'').trim(),
+    peso:    Number(document.getElementById('inb-peso')?.value||0),
+    nota:    (document.getElementById('inb-nota-item')?.value||'').trim(),
+    capturedBy: S.nombre,
+    fotoUrl: null,
+    fotoPath: null,
+    _guardado: false,
+  };
+
+  /* Subir foto si hay */
+  if (INB.fotoDataUrl){
+    try {
+      const f = await dataURLtoFile(INB.fotoDataUrl, `inbound_${item.id}.jpg`);
+      const { url, path } = await subirFotoStorage(f, `inbound/${INB.tarimaId}`);
+      item.fotoUrl = url;
+      item.fotoPath = path;
+      toast('Foto subida ✓','success');
+    } catch(e){
+      toast('Foto sin subir (sin Storage): '+e.message,'warn');
+    }
+  }
+
+  if (INB.editIdx !== null){
+    /* Edición: borrar foto vieja si cambió */
+    const viejo = INB.items[INB.editIdx];
+    if (viejo?.fotoPath && viejo.fotoPath !== item.fotoPath){
+      borrarFotoStorage(viejo.fotoPath);
+    }
+    item.id = viejo.id; /* conservar el mismo ID */
+    INB.items[INB.editIdx] = item;
+    INB.editIdx = null;
+    toast(`Ítem "${sku}" actualizado`,'success');
+  } else {
+    INB.items.push(item);
+    toast(`Ítem "${sku}" × ${qty} agregado`,'success');
+  }
+
+  /* Guardar en Firestore en tiempo real (para recovery si se cierra la app) */
+  try {
+    await fsSet(`items_tarima/${item.id}`, {
+      ...item, _guardado: true,
+      fecha: new Date().toISOString(),
+    });
+    item._guardado = true;
+  } catch(e){ /* offline: se re-sincronizará */ }
+
+  inbLimpiarForm();
+  inbRenderItems();
+}
+
+/* helper: dataURL → File */
+function dataURLtoFile(dataUrl, filename){
+  const arr = dataUrl.split(',');
+  const mime = arr[0].match(/:(.*?);/)[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while(n--) u8arr[n] = bstr.charCodeAt(n);
+  return new File([u8arr], filename, { type: mime });
+}
+
+/* ── Render lista de ítems capturados ── */
+function inbRenderItems(){
+  const badge = document.getElementById('inb-items-badge');
+  const cnt   = document.getElementById('inb-items-cnt');
+  const lista = document.getElementById('inb-items-list');
+  const empty = document.getElementById('inb-items-empty');
+  const n = INB.items.length;
+  if (badge) badge.textContent = n + ' ítem' + (n!==1?'s':'');
+  if (cnt)   cnt.textContent   = n;
+  if (!lista) return;
+
+  if (!n){
+    if (empty) empty.style.display = 'block';
+    lista.innerHTML = '';
+    const e2 = document.createElement('div');
+    e2.className='empty'; e2.id='inb-items-empty';
+    e2.innerHTML='<i class="ti ti-package"></i><p>Agrega ítems usando el formulario</p>';
+    lista.appendChild(e2);
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+
+  const total = INB.items.reduce((s,i) => s + Number(i.cantidad||0), 0);
+  lista.innerHTML = `
+    <div style="font-size:10px;color:var(--txt2);margin-bottom:8px;text-align:right;">
+      Total: <strong style="font-family:var(--mono);">${total.toLocaleString('es-MX')}</strong> unidades
+    </div>` +
+    INB.items.map((it, idx) => `
+    <div style="border:1px solid var(--border);border-radius:var(--r);padding:10px;margin-bottom:8px;background:var(--bg2);">
+      <div style="display:flex;align-items:flex-start;gap:8px;">
+        ${it.fotoUrl ? `<img src="${it.fotoUrl}" style="width:44px;height:44px;object-fit:cover;border-radius:4px;flex-shrink:0;" onerror="this.style.display='none'">` : ''}
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <code style="font-size:11px;font-weight:700;color:var(--blue);">${it.sku}</code>
+            <span class="est ${it.condicion==='buena'?'est-completada':it.condicion==='danada'?'est-pausa':'est-proceso'}" style="font-size:9px;">${it.condicion}</span>
+            ${it._guardado?'<span style="font-size:9px;color:var(--green);">✓ guardado</span>':'<span style="font-size:9px;color:var(--amber);">⏳</span>'}
+          </div>
+          <div style="font-size:11px;color:var(--txt2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.desc||'—'}</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:3px;">
+            <span style="font-family:var(--mono);font-weight:700;font-size:12px;">${Number(it.cantidad).toLocaleString('es-MX')} ${it.unidad}</span>
+            ${it.ean?`<span style="font-size:10px;color:var(--txt3);font-family:var(--mono);">${it.ean}</span>`:''}
+            ${it.color?`<span style="font-size:10px;color:var(--txt2);">${it.color}</span>`:''}
+            ${it.talla?`<span style="font-size:10px;color:var(--txt2);">T:${it.talla}</span>`:''}
+          </div>
+          ${it.nota?`<div style="font-size:10px;color:var(--amber);margin-top:2px;">⚠️ ${it.nota}</div>`:''}
+        </div>
+        <div style="display:flex;gap:4px;flex-shrink:0;">
+          <button class="btn btn-xs" onclick="inbEditarItem(${idx})" title="Editar"><i class="ti ti-edit"></i></button>
+          <button class="btn btn-xs btn-del" onclick="inbEliminarItem(${idx})" title="Eliminar"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+/* ── Editar ítem ── */
+function inbEditarItem(idx){
+  const it = INB.items[idx];
+  if (!it) return;
+  INB.editIdx = idx;
+  const set = (id, val) => { const e = document.getElementById(id); if(e) e.value = val||''; };
+  set('inb-sku', it.sku);
+  set('inb-ean', it.ean);
+  set('inb-desc', it.desc);
+  set('inb-qty', it.cantidad);
+  set('inb-color', it.color);
+  set('inb-talla', it.talla);
+  set('inb-medidas', it.medidas);
+  set('inb-peso', it.peso||'');
+  set('inb-nota-item', it.nota);
+  const unid = document.getElementById('inb-unidad'); if(unid) unid.value = it.unidad||'PZA';
+  const cond = document.getElementById('inb-cond');   if(cond) cond.value = it.condicion||'buena';
+  /* Mostrar foto previa si existe */
+  if (it.fotoUrl){
+    const prev = document.getElementById('inb-fotoprev');
+    const icn  = document.getElementById('inb-fotoicn');
+    const qbtn = document.getElementById('btn-inb-quitar-foto');
+    if (prev){ prev.src = it.fotoUrl; prev.style.display='block'; }
+    if (icn)  icn.style.display = 'none';
+    if (qbtn) qbtn.style.display = 'inline-flex';
+    INB.fotoDataUrl = it.fotoUrl; /* marca que hay foto */
+  }
+  /* Abrir atributos si hay datos */
+  if ((it.color||it.talla||it.medidas||it.peso) && !INB.attrsAbiertos) inbToggleAttrs();
+  document.getElementById('inb-sku')?.focus();
+  toast(`Editando ítem "${it.sku}" — modifica y pulsa "Agregar ítem"`, 'info');
+}
+
+/* ── Eliminar ítem ── */
+async function inbEliminarItem(idx){
+  const it = INB.items[idx];
+  if (!it) return;
+  if (!confirm(`¿Eliminar el ítem "${it.sku}"?`)) return;
+  /* Borrar foto de Storage */
+  if (it.fotoPath) borrarFotoStorage(it.fotoPath);
+  /* Borrar de Firestore */
+  try { await fsDel(`items_tarima/${it.id}`); } catch(e){ /* offline */ }
+  INB.items.splice(idx, 1);
+  inbRenderItems();
+  toast(`"${it.sku}" eliminado`,'success');
+}
+
+/* ── Paso 1 → Paso 2 ── */
+function inbIrPaso2(){
+  if (!INB.items.length){ toast('Agrega al menos un ítem antes de cerrar','warn'); return; }
+  /* Construir resumen */
+  const total = INB.items.reduce((s,i) => s + Number(i.cantidad||0), 0);
+  const cli   = INB.cliente || INB.clienteId;
+
+  const res = document.getElementById('inb-resumen-txt');
+  if (res) res.innerHTML = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <span class="est est-proceso">LP: ${INB.lp}</span>
+      <span class="est est-proceso">${cli}</span>
+      ${INB.po?`<span class="est est-pendiente">PO: ${INB.po}</span>`:''}
+    </div>
+    <div><strong>Ítems:</strong> ${INB.items.length} referencias · <strong>${total.toLocaleString('es-MX')}</strong> unidades totales</div>
+    ${INB.prov?`<div><strong>Proveedor:</strong> ${INB.prov}</div>`:''}
+    ${INB.obsGen?`<div><strong>Obs. generales:</strong> ${INB.obsGen}</div>`:''}`;
+
+  /* Tabla de ítems en resumen */
+  const tb = document.getElementById('inb-resumen-tabla');
+  if (tb) tb.innerHTML = INB.items.map(it => `
+    <tr>
+      <td><code style="font-size:10px;">${it.sku}</code></td>
+      <td style="font-size:11px;color:var(--txt2);">${it.desc||'—'}</td>
+      <td style="font-family:var(--mono);font-weight:700;">${Number(it.cantidad).toLocaleString('es-MX')} ${it.unidad}</td>
+      <td><span class="est ${it.condicion==='buena'?'est-completada':'est-pausa'}" style="font-size:9px;">${it.condicion}</span></td>
+      <td>${it.fotoUrl?'<i class="ti ti-camera" style="color:var(--green);"></i>':'—'}</td>
+    </tr>`).join('');
+
+  inbGoto(2);
+}
+
+/* ── Cerrar tarima → Zona Validación ── */
+async function inbCerrarTarima(){
+  const zonaDestino = document.getElementById('inb-zona-destino')?.value || 'Zona Validación';
+  const obsCierre   = document.getElementById('inb-obs-cierre')?.value?.trim() || '';
+
+  const btn = document.getElementById('btn-inb-cerrar');
+  if (btn){ btn.disabled=true; btn.innerHTML='<div class="spin spin-w" style="width:14px;height:14px;display:inline-block;"></div> Cerrando…'; }
+
+  try {
+    /* 1. Actualizar la tarima a estatus "validacion" */
+    await fsUpd(`tarimas/${INB.tarimaId}`, {
+      estatus: 'validacion',
+      zonaActual: zonaDestino,
+      obsCierre,
+      fechaCierre: new Date().toISOString(),
+      cerradoPor: S.nombre,
+      totalItems: INB.items.length,
+      totalUnidades: INB.items.reduce((s,i) => s + Number(i.cantidad||0), 0),
+    });
+
+    /* 2. Asegurar que todos los ítems están en Firestore */
+    for (const it of INB.items){
+      if (!it._guardado){
+        await fsSet(`items_tarima/${it.id}`, {
+          ...it, _guardado: true, fecha: new Date().toISOString(),
+        });
+        it._guardado = true;
+      }
+    }
+
+    /* 3. Completar tarea si venía de una tarea asignada */
+    S.tareas = await fsGet('tareas');
+    const completada = await completarTareaActiva(['inbound']);
+    if (completada) ocultarBannersTarea();
+
+    toast(`✅ Tarima "${INB.lp}" cerrada → ${zonaDestino}. Lista para Putaway.`,'success');
+
+    /* 4. Reset y volver al home */
+    Object.assign(INB, { lp:'', tarimaId:'', clienteId:'', cliente:'', po:'', prov:'', obsGen:'', items:[], fotoDataUrl:null, editIdx:null });
+    inbMostrarHome();
+
+  } catch(e){
+    toast('❌ Error cerrando tarima: '+e.message,'error');
+  } finally {
+    if (btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-forklift"></i>Confirmar y enviar a Zona Validación'; }
+  }
+}
+
+/* ── Retomar tarima abierta desde el home ── */
+async function inbRetomarTarima(tarimaId){
+  const t = S.tarimas.find(x => x.id === tarimaId);
+  if (!t) return;
+  /* Re-popular selector de clientes */
+  const sel = document.getElementById('inb-cli');
+  if (sel){
+    sel.innerHTML = '<option value="">— Selecciona cliente —</option>' +
+      S.clientes.map(c => `<option value="${c.id||c.id_odoo}">${c.nombre}</option>`).join('');
+    sel.value = t.clienteId || '';
+  }
+  /* Llenar paso 0 */
+  const setV = (id, v) => { const e = document.getElementById(id); if(e) e.value = v||''; };
+  setV('inb-lp', t.lp);
+  setV('inb-po', t.po);
+  setV('inb-prov', t.proveedor);
+  setV('inb-obs-gen', t.obsGeneral);
+
+  /* Cargar ítems de Firestore */
+  const itemsFS = S.itemsTarima.filter(i => i.tarimaId === tarimaId || i.lp === t.lp);
+  Object.assign(INB, {
+    lp: t.lp, tarimaId, clienteId: t.clienteId, cliente: t.cliente,
+    po: t.po, prov: t.proveedor||'', obsGen: t.obsGeneral||'',
+    items: itemsFS.map(i => ({ ...i, _guardado: true })),
+    fotoDataUrl: null, editIdx: null,
+  });
+
+  const lbl = document.getElementById('inb-lp-lbl');
+  if (lbl) lbl.textContent = t.lp;
+
+  inbMostrarWizard();
+  inbLimpiarForm();
+  inbRenderItems();
+  inbGoto(1);
+  toast(`Retomando tarima "${t.lp}" con ${itemsFS.length} ítem(s) previo(s)`,'info');
+}
+
+/* ── Autocompletado de SKU en Inbound (mismo pool que el conteo) ── */
+const inbAcSt = { items: [], idx: -1 };
+
+function inbAcBuscar(q){
+  const cont = document.getElementById('ac-inb-sku');
+  if (!cont) return;
+  const query = (q||'').trim().toLowerCase();
+  let pool = S.skus;
+  if (INB.clienteId) pool = pool.filter(s => String(s.cliente_id||s.id_odoo||'') === String(INB.clienteId));
+  let res = query
+    ? pool.filter(s => (s.sku||'').toLowerCase().includes(query)||(s.descripcion||'').toLowerCase().includes(query)||(s.barcode||'').includes(query)).slice(0,15)
+    : pool.slice(0,12);
+  inbAcSt.items = res; inbAcSt.idx = -1;
+  if (!res.length){
+    cont.innerHTML = `<div class="ac-empty">Sin coincidencias${INB.clienteId?' para este cliente':''}. Puedes capturar el SKU manualmente.</div>`;
+    cont.classList.add('open'); return;
+  }
+  cont.innerHTML = res.map((s,i) => `
+    <div class="ac-item" data-i="${i}" onmousedown="inbAcElegir(${i})">
+      <span class="ac-sku">${s.sku||'SIN-SKU'}</span>
+      <span class="ac-desc">${s.descripcion||'—'}</span>
+      <span class="ac-meta">${s.barcode?'📷 '+s.barcode+' · ':''}A mano: ${Number(s.cantidad_mano||0).toLocaleString('es-MX')} ${s.unidad||'PZA'}${s.ubicacion?' · '+s.ubicacion:''}</span>
+    </div>`).join('');
+  cont.classList.add('open');
+}
+
+function inbAcNav(e){
+  const cont = document.getElementById('ac-inb-sku');
+  const abierto = cont?.classList.contains('open');
+  if (e.key === 'ArrowDown' && abierto){ e.preventDefault(); inbAcSt.idx = Math.min(inbAcSt.idx+1, inbAcSt.items.length-1); inbAcMarcar(); }
+  else if (e.key === 'ArrowUp' && abierto){ e.preventDefault(); inbAcSt.idx = Math.max(inbAcSt.idx-1, 0); inbAcMarcar(); }
+  else if (e.key === 'Enter'){
+    if (abierto && inbAcSt.idx >= 0){ e.preventDefault(); inbAcElegir(inbAcSt.idx); }
+    else inbAddItem();
+  }
+  else if (e.key === 'Escape') inbAcCerrar();
+}
+
+function inbAcMarcar(){
+  const cont = document.getElementById('ac-inb-sku'); if(!cont) return;
+  cont.querySelectorAll('.ac-item').forEach(el => {
+    el.classList.toggle('sel', Number(el.dataset.i) === inbAcSt.idx);
+    if (Number(el.dataset.i) === inbAcSt.idx) el.scrollIntoView({block:'nearest'});
+  });
+}
+
+function inbAcElegir(i){
+  const s = inbAcSt.items[i]; if(!s) return;
+  const el   = document.getElementById('inb-sku');  if(el)   el.value = s.sku||'';
+  const desc = document.getElementById('inb-desc'); if(desc) desc.value = s.descripcion||'';
+  const ean  = document.getElementById('inb-ean');  if(ean && s.barcode) ean.value = s.barcode;
+  const unid = document.getElementById('inb-unidad'); if(unid && s.unidad) unid.value = s.unidad;
+  document.getElementById('inb-qty')?.focus();
+  inbAcCerrar();
+}
+
+function inbAcCerrar(){ const c = document.getElementById('ac-inb-sku'); if(c) c.classList.remove('open'); inbAcSt.idx=-1; }
+
+/* ── Manejar el scanner cuando el target es 'inb-lp', 'inb-sku' o 'inb-ean' ── */
+/* Se extiende onScanOk (ya definida) para estos nuevos targets */
+const _origOnScanOk = onScanOk;
+window.onScanOk = function(txt){
+  const val = (txt||'').trim();
+  if (!val) return;
+  if (S.scanTarget === 'inb-lp'){
+    cerrarScanner();
+    const el = document.getElementById('inb-lp'); if(el) el.value = val.toUpperCase();
+    toast('LP escaneado: '+val,'success');
+  } else if (S.scanTarget === 'inb-sku'){
+    cerrarScanner();
+    const el = document.getElementById('inb-sku'); if(el) el.value = val;
+    /* Buscar en catálogo */
+    const s = S.skus.find(x => x.sku===val||x.barcode===val||(String(x.id_odoo)===val));
+    if (s){
+      const desc = document.getElementById('inb-desc'); if(desc) desc.value = s.descripcion||'';
+      const ean  = document.getElementById('inb-ean');  if(ean && s.barcode) ean.value = s.barcode;
+      const unid = document.getElementById('inb-unidad'); if(unid && s.unidad) unid.value = s.unidad;
+      toast(`SKU: ${s.sku} — ${s.descripcion||''}`, 'success');
+    } else { toast('Código capturado: '+val,'info'); }
+    document.getElementById('inb-qty')?.focus();
+  } else if (S.scanTarget === 'inb-ean'){
+    cerrarScanner();
+    const el = document.getElementById('inb-ean'); if(el) el.value = val;
+    /* Buscar SKU por EAN */
+    const s = S.skus.find(x => x.barcode===val);
+    if (s && !document.getElementById('inb-sku')?.value){
+      const sk   = document.getElementById('inb-sku');   if(sk)   sk.value   = s.sku||'';
+      const desc = document.getElementById('inb-desc');  if(desc) desc.value = s.descripcion||'';
+    }
+    toast('EAN capturado: '+val,'info');
+  } else {
+    _origOnScanOk(txt);
+  }
+};
+
+/* ── Render HOME de Inbound (reemplaza la versión básica de la Parte 1) ── */
+function renderInboundHome(){
+  const tarimas = S.tarimas.filter(enAlmacen);
+  const abiertas    = tarimas.filter(t => t.estatus === 'abierta');
+  const enValidacion = tarimas.filter(t => t.estatus === 'validacion');
+  const itemsHoy = S.itemsTarima.filter(i => {
+    const f = i.fecha ? new Date(i.fecha) : null;
+    return f && f.toDateString() === new Date().toDateString();
+  }).length;
+
+  setTxt('inb-kpi-abierta', abiertas.length);
+  setTxt('inb-kpi-val', enValidacion.length);
+  setTxt('inb-kpi-items', itemsHoy);
+
+  /* Lista abiertas */
+  const contA = document.getElementById('inb-lista-abiertas');
+  if (contA){
+    if (!abiertas.length){
+      contA.innerHTML = '<div class="empty"><i class="ti ti-package"></i><p>No hay tarimas en captura por el momento.</p></div>';
+    } else {
+      contA.innerHTML = abiertas.map(t => {
+        const items = S.itemsTarima.filter(i => i.tarimaId === t.id || i.lp === t.lp);
+        const totalU = items.reduce((s,i) => s + Number(i.cantidad||0), 0);
+        return `
+        <div class="tcard">
+          <div class="tcard-hdr">
+            <div class="tcard-title"><code>${t.lp||t.id}</code></div>
+            ${estTarimaBadge(t.estatus)}
+          </div>
+          <div class="tcard-meta">
+            ${t.cliente?`<span style="font-size:10px;color:var(--txt2);">Cliente: ${t.cliente}</span>`:''}
+            <span style="font-size:10px;color:var(--txt2);">${items.length} ref(s) · ${totalU.toLocaleString('es-MX')} unid.</span>
+            ${t.po?`<span style="font-size:10px;color:var(--txt3);">PO: ${t.po}</span>`:''}
+            ${t.creadoPor?`<span style="font-size:10px;color:var(--txt2);">Por: ${t.creadoPor}</span>`:''}
+          </div>
+          <div class="tcard-foot">
+            <button class="btn btn-p btn-sm" onclick="inbRetomarTarima('${t.id}')"><i class="ti ti-edit"></i>Continuar captura</button>
+            <button class="btn btn-sm btn-ok" onclick="inbIrCierreDirecto('${t.id}')"><i class="ti ti-circle-check"></i>Cerrar tarima</button>
+            <button class="btn btn-xs btn-del" onclick="inbEliminarTarima('${t.id}','${(t.lp||'').replace(/'/g,'')}')"><i class="ti ti-trash"></i></button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  /* Lista en Zona Validación */
+  const contV = document.getElementById('inb-lista-validacion');
+  if (contV){
+    if (!enValidacion.length){
+      contV.innerHTML = '<div class="empty"><i class="ti ti-package"></i><p>Sin tarimas en Zona Validación.</p></div>';
+    } else {
+      contV.innerHTML = enValidacion.map(t => {
+        const items = S.itemsTarima.filter(i => i.tarimaId === t.id || i.lp === t.lp);
+        const totalU = items.reduce((s,i) => s + Number(i.cantidad||0), 0);
+        return `
+        <div class="tcard">
+          <div class="tcard-hdr">
+            <div class="tcard-title"><code>${t.lp||t.id}</code></div>
+            ${estTarimaBadge(t.estatus)}
+          </div>
+          <div class="tcard-meta">
+            ${t.cliente?`<span style="font-size:10px;color:var(--txt2);">Cliente: ${t.cliente}</span>`:''}
+            <span style="font-size:10px;color:var(--txt2);">${items.length} ref(s) · ${totalU.toLocaleString('es-MX')} unid.</span>
+            <span style="font-size:10px;color:var(--txt2);">📍 ${t.zonaActual||'Zona Validación'}</span>
+            ${t.cerradoPor?`<span style="font-size:10px;color:var(--txt3);">Cerrado por: ${t.cerradoPor}</span>`:''}
+          </div>
+          <div class="tcard-foot">
+            <button class="btn btn-sm" onclick="inbVerDetalle('${t.id}')"><i class="ti ti-eye"></i>Ver detalle</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
+}
+
+/* ── Cierre directo desde el home (sin re-cargar ítems en el form) ── */
+async function inbIrCierreDirecto(tarimaId){
+  const t = S.tarimas.find(x => x.id === tarimaId); if(!t) return;
+  const items = S.itemsTarima.filter(i => i.tarimaId === tarimaId || i.lp === t.lp);
+  if (!items.length){ toast('Esta tarima no tiene ítems capturados. Entra con "Continuar captura".','warn'); return; }
+  /* Cargar en INB y saltar al paso 2 */
+  Object.assign(INB, {
+    lp: t.lp, tarimaId, clienteId: t.clienteId, cliente: t.cliente,
+    po: t.po||'', prov: t.proveedor||'', obsGen: t.obsGeneral||'',
+    items: items.map(i => ({ ...i, _guardado: true })),
+    fotoDataUrl: null, editIdx: null,
+  });
+  inbMostrarWizard();
+  inbGoto(1);
+  inbRenderItems();
+  setTimeout(() => inbIrPaso2(), 80);
+}
+
+/* ── Eliminar tarima abierta ── */
+async function inbEliminarTarima(id, lp){
+  if (!confirm(`¿Eliminar la tarima "${lp}" y todos sus ítems? Esta acción no se puede deshacer.`)) return;
+  try {
+    /* Eliminar ítems */
+    const items = S.itemsTarima.filter(i => i.tarimaId === id || i.lp === lp);
+    for (const it of items){
+      if (it.fotoPath) borrarFotoStorage(it.fotoPath);
+      await fsDel(`items_tarima/${it.id}`);
+    }
+    await fsDel(`tarimas/${id}`);
+    toast(`Tarima "${lp}" eliminada`,'success');
+  } catch(e){ toast('Error: '+e.message,'error'); }
+}
+
+/* ── Ver detalle de tarima en Zona Validación ── */
+function inbVerDetalle(tarimaId){
+  const t = S.tarimas.find(x => x.id === tarimaId); if(!t) return;
+  const items = S.itemsTarima.filter(i => i.tarimaId === tarimaId || i.lp === t.lp);
+  const totalU = items.reduce((s,i) => s + Number(i.cantidad||0), 0);
+  const filas = items.map(it => `
+    <tr>
+      <td><code style="font-size:10px;">${it.sku}</code></td>
+      <td style="font-size:11px;">${it.desc||'—'}</td>
+      <td style="font-family:var(--mono);font-weight:700;">${Number(it.cantidad).toLocaleString('es-MX')} ${it.unidad}</td>
+      <td>${it.color||'—'}</td>
+      <td>${it.talla||'—'}</td>
+      <td><span class="est ${it.condicion==='buena'?'est-completada':'est-pausa'}" style="font-size:9px;">${it.condicion||'buena'}</span></td>
+      <td>${it.fotoUrl?`<a href="${it.fotoUrl}" target="_blank"><i class="ti ti-photo" style="color:var(--green);"></i></a>`:'—'}</td>
+    </tr>`).join('');
+
+  /* Crear modal dinámico */
+  let m = document.getElementById('modal-inb-detalle');
+  if (!m){
+    m = document.createElement('div');
+    m.id = 'modal-inb-detalle';
+    m.className = 'modal-bg';
+    document.body.appendChild(m);
+    m.addEventListener('click', e => { if(e.target===m) m.classList.remove('open'); });
+  }
+  m.innerHTML = `
+    <div class="modal" style="max-width:720px;">
+      <div class="mhdr">
+        <div class="mtitle"><i class="ti ti-package"></i> Tarima ${t.lp}</div>
+        <button class="mclose" onclick="document.getElementById('modal-inb-detalle').classList.remove('open')">×</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+        ${estTarimaBadge(t.estatus)}
+        ${t.cliente?`<span class="est est-proceso">${t.cliente}</span>`:''}
+        ${t.po?`<span class="est est-pendiente">PO: ${t.po}</span>`:''}
+        <span class="est est-completada">${items.length} refs · ${totalU.toLocaleString('es-MX')} unid.</span>
+        <span style="font-size:10px;color:var(--txt2);">📍 ${t.zonaActual||'Zona Validación'}</span>
+      </div>
+      <div class="twrap">
+        <table>
+          <thead><tr><th>SKU</th><th>Descripción</th><th>Cantidad</th><th>Color</th><th>Talla</th><th>Condición</th><th>Foto</th></tr></thead>
+          <tbody>${filas||'<tr><td colspan="7">Sin ítems</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div style="font-size:10px;color:var(--txt3);margin-top:10px;">
+        Cerrado por ${t.cerradoPor||'—'} · ${t.fechaCierre?new Date(t.fechaCierre).toLocaleString('es-MX'):'—'}
+        ${t.obsCierre?` · Obs: ${t.obsCierre}`:''}
+      </div>
+    </div>`;
+  m.classList.add('open');
+}
 
 (function init(){
   const hoy=new Date().toISOString().split('T')[0];
